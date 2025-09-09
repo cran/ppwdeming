@@ -1,0 +1,167 @@
+#' Weighted Deming Regression -- Outlier scanning
+#' @name PWD_outlier
+#'
+#' @description
+#' This function tests for outliers from the fitted regression, and refits on
+#' a sanitized data set (with outliers removed).
+#'
+#' @usage
+#' PWD_outlier(X, Y, K, lambda=1, Pcut=0.01, printem=FALSE)
+#'
+#' @param X		the vector of predicate readings,
+#' @param Y		the vector of test readings,
+#' @param K		the maximum number of outliers to seek,
+#' @param lambda		*optional* the ratio of the X to the Y precision profile (defaults to 1),
+#' @param Pcut		*optional*, default 0.01 (1%), cutoff for statistical significance of Bonferroni P,
+#' @param printem	  *optional* - if TRUE, routine will print out results as a `message`.
+#'
+#' @details
+#' The method is modeled on the Rosner sequential ESD outlier procedure and
+#' assumes the sample is large enough to assume normality of the predicted
+#' residuals.
+#'
+#' @returns A list containing the following components:
+#'
+#'   \item{ndrop}{the number of significant outliers}
+#'   \item{drop}{a vector of the indices of the outliers}
+#'   \item{cor }{the Pearson correlation between X and Y}
+#'   \item{cleancor }{the Pearson correlation between cleaned X and Y (after outliers removed)}
+#'   \item{scalr}{the scaled residuals of all cases from the sanitized fit}
+#'   \item{keep}{logical vector identifying which cases retained in sanitized data set}
+#'   \item{basepar}{the sigma, kappa, alpha, beta of the full data set}
+#'   \item{lastpar}{the sigma, kappa, alpha, beta of the sanitized data set}
+#'
+#' @author Douglas M. Hawkins, Jessica J. Kraker <krakerjj@uwec.edu>
+#'
+#' @examples
+#' # library
+#' library(ppwdeming)
+#'
+#' # parameter specifications
+#' sigma <- 1
+#' kappa <- 0.08
+#' alpha <- 1
+#' beta  <- 1.1
+#' true  <- 8*10^((0:99)/99)
+#' truey <- alpha+beta*true
+#' # simulate single sample - set seed for reproducibility
+#' set.seed(1039)
+#' # specifications for predicate method
+#' X     <- sigma*rnorm(100)+true *(1+kappa*rnorm(100))
+#' # specifications for test method
+#' Y     <- sigma*rnorm(100)+truey*(1+kappa*rnorm(100))
+#' # add some outliers
+#' Y[c(1,2,100)] <- Y[c(1,2,100)] + c(7,4,-45)
+#'
+#' # check for outliers, re-fit, and store output
+#' \donttest{outliers_assess <- PWD_outlier(X, Y, K=5, printem=TRUE)}
+#'
+#' @references Hawkins DM and Kraker JJ. Precision Profile Weighted Deming
+#' Regression for Methods Comparison, on *Arxiv* (2025) <doi:10.48550/arXiv.2508.02888>
+#'
+#' @references  Hawkins DM (2008). *Outliers* in Wiley Encyclopedia of Clinical Trials,
+#' eds R. D’Agostino, L. Sullivan, and J. Massaro. Wiley, New York.
+#'
+#' @importFrom stats pnorm
+#'
+#' @export
+
+PWD_outlier <- function(X, Y, K, lambda=1, Pcut=0.01, printem=FALSE) {
+  outlis   <- NULL
+  N        <- length(X)
+  keep     <- rep(TRUE, N)
+  mapper   <- 1:N
+
+  if (printem) {
+    message(sprintf("Outlier identification\nFull sample fit\n"))
+    do <- PWD_inference(X, Y, lambda, printem=TRUE)
+  }
+  # Forward identification of suspects
+  for (m in 1:K) {
+    x          <- X[keep]
+    y          <- Y[keep]
+    do         <- PWD_get_gh(x, y, lambda)
+    printres   <- FALSE
+    if (m == 1) {
+      basepar  <- c(do$sigma, do$kappa, do$alpha, do$beta, do$like)
+      lastpar  <- basepar                 # If there are no outliers
+      printres <- TRUE & printem
+    }
+
+    alpha      <- do$alpha
+    beta       <- do$beta
+    mu         <- do$mu
+    resi       <- y - alpha - beta*x
+
+    fitres     <- PWD_resi(x, resi, printem=printres)
+    sigr       <- fitres$sigmar
+    kapr       <- fitres$kappar
+    scalr      <- fitres$scalr
+
+    profl      <- resi/scalr
+    ascal      <- abs(scalr)
+    maxa       <- max(ascal)
+    inx        <- (1:N)[ascal == max(ascal)][1]
+    susp       <- mapper[inx]
+
+    Bonmin     <- 2*(N-m+1)*pnorm(-maxa)
+    if (printem) message(sprintf("Suspect %3.0f outlier Z %5.2f \n", susp, scalr[inx]))
+    outlis     <- c(outlis, susp)
+    keep[susp] <- FALSE
+    mapper     <- mapper[-inx]
+  }
+  x          <- X[keep]
+  y          <- Y[keep]
+  do         <- PWD_get_gh(x, y, lambda)
+
+  # Now do reinclusion
+  if (printem) message(sprintf("Outlier reinclusion\n"))
+  for (m in 1:K) {
+    x          <- X[keep]
+    y          <- Y[keep]
+    do         <- PWD_get_gh(x, y, lambda)
+    sigr         <- fitres$sigmar
+    kapr         <- fitres$kappar
+    alpha        <- do$alpha
+    beta         <- do$beta
+
+    resis        <- Y - alpha - beta*X
+    profl        <- sqrt(sigr^2 + (beta*kapr*X)^2)
+    scalr        <- resis/profl
+    BonP         <- 2*(N-m+1)*pnorm(-abs(scalr))
+    outlis       <- (1:N)[!keep]
+    minout       <- min(abs(scalr[!keep]))
+    susp         <- (1:N)[!keep & abs(scalr) == minout]
+    Bonmax       <- max(BonP[!keep])
+
+    if(printem) {
+      echoit    <- data.frame(outlis, round(scalr[!keep],3), round(BonP[!keep],5))
+      colnames(echoit) <- c("case", "outlier Z", "Bonferroni P")
+      message(echoit)
+      message(sprintf("Least suspect %3.0f Z %5.3f BonP %6.4f\n", susp,minout,Bonmax))
+    }
+
+    if (Bonmax < Pcut) {
+      if (printem) message(sprintf("Any remaining suspects significant\n"))
+      lastpar <- c(do$sigma, do$kappa, do$alpha, do$beta, do$like)
+
+      break
+    }
+    message(sprintf("Reinclude %1.0f\n", susp))
+    keep[susp] <- TRUE      # Reinclude---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  }
+
+  # End reinclusions
+
+  ndrop  <- sum(!keep)
+  listem <- (1:N)[!keep]
+  if (ndrop > 0 & printem) {
+    message(sprintf("\nFit to retained clean cases\n"))
+    dofir  <- PWD_inference(x, y, lambda=1, printem=TRUE)
+  }
+
+  corXY = cor(X,Y)
+  cleancorxy = cor(x,y)
+  return(list(ndrop=ndrop, drop=listem, cor=corXY, cleancor=cleancorxy, scalr=scalr,
+              keep=keep, basepar=basepar, lastpar=lastpar))
+}
