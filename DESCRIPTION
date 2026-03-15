@@ -1,6 +1,6 @@
 Package: ppwdeming
-Version: 2.0.0
-Date: 2025-12-21
+Version: 2.1.0
+Date: 2026-3-15
 Title: Precision Profile Weighted Deming Regression
 Authors@R: c(person("Douglas M.", "Hawkins", role = c("aut", "cph")),
               person("Jessica J.", "Kraker", role = c("aut", "cre"),
@@ -26,13 +26,15 @@ Description: Weighted Deming regression, also known as 'errors-in-variable'
     outlier analysis identifying significant outliers for closer investigation. 
     The following reference provides further information on mathematical 
     derivations and applications. 
-    Hawkins, D.M., and J.J. Kraker. 'Precision Profile Weighted Deming 
-    Regression for Methods Comparison', (in press) <doi:10.1093/jalm/jfaf183>.
+    Hawkins, D.M., and J.J. Kraker (2026). 'Precision Profile Weighted
+    Deming Regression for Methods Comparison'. 
+    The Journal of Applied Laboratory Medicine 11, 379-392
+    <doi:10.1093/jalm/jfaf183>.
 License: GPL (>= 3)
 Encoding: UTF-8
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2026-01-09 21:50:51 UTC; jjkra
+Packaged: 2026-03-15 21:58:49 UTC; jjkra
 Repository: CRAN
-Date/Publication: 2026-01-09 22:10:02 UTC
+Date/Publication: 2026-03-15 22:20:02 UTC
